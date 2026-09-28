@@ -1,4 +1,4 @@
-import json, asyncio, re
+import json, asyncio, re, os
 from playwright.async_api import async_playwright
 
 BASE = "https://aqaralmuhaysini.com"
@@ -43,7 +43,12 @@ async def main():
 
         await browser.close()
 
-    json.dump(results, open("properties.json", "w", encoding="utf-8"), ensure_ascii=False, indent=2)
+        texts = [r["text"] for r in results]
+    pre = len(os.path.commonprefix(texts))
+    suf = len(os.path.commonprefix([t[::-1] for t in texts]))
+    for r in results:
+        r["text"] = r["text"][pre:len(r["text"]) - suf][:600]
+    json.dump(results, open("properties.json", "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
     print(f"تم: {len(results)} عقار")
 
 asyncio.run(main())
