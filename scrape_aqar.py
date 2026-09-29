@@ -2,7 +2,9 @@ import json, asyncio, re, os
 from playwright.async_api import async_playwright
 
 STARTS = [f"https://aqaralmuhaysini.com/propertielist?regionId={i}" for i in range(1, 21)]
-NEXT_BTN = "text=/^(التالي|Next|›|»|>)$/"
+SEL = "a[href*='propertydetails']"
+NEXT_BTN = "text=/التالي/"
+LINKS_JS = "sel => [...document.querySelectorAll(sel)].map(e => e.href).join(',')"
 
 async def main():
     async with async_playwright() as p:
@@ -12,23 +14,29 @@ async def main():
         links = set()
         for start in STARTS:
             await page.goto(start, wait_until="networkidle")
+            await page.wait_for_timeout(1500)
             page_no = 1
             while True:
-                await page.mouse.wheel(0, 50000)
-                await page.wait_for_timeout(1500)
-                found = await page.eval_on_selector_all(
-                    "a[href*='propertydetails']", "els => els.map(e => e.href)")
+                found = await page.eval_on_selector_all(SEL, "els => els.map(e => e.href)")
                 before = len(links)
                 links.update(found)
                 print(f"{start} | صفحة {page_no}: {len(links)} إعلان")
 
-                nxt = page.locator(NEXT_BTN).last
-                if await nxt.count() and await nxt.is_visible() and await nxt.is_enabled():
-                    await nxt.click()
-                    await page.wait_for_load_state("networkidle")
-                    page_no += 1
-                elif len(links) == before:
+                if page_no > 1 and len(links) == before:
                     break
+                nxt = page.locator(NEXT_BTN).last
+                if not (await nxt.count() and await nxt.is_visible() and await nxt.is_enabled()):
+                    break
+
+                prev = await page.evaluate(LINKS_JS, SEL)
+                await nxt.click()
+                try:  # ينتظر لين تتغير العقارات فعلاً
+                    await page.wait_for_function(
+                        f"prev => ({LINKS_JS})(\"{SEL}\") !== prev", arg=prev, timeout=10000)
+                except Exception:
+                    break
+                await page.wait_for_timeout(500)
+                page_no += 1
 
         results = []
         for i, url in enumerate(sorted(links), 1):
