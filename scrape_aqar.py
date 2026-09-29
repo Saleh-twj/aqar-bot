@@ -1,33 +1,34 @@
 import json, asyncio, re, os
 from playwright.async_api import async_playwright
 
-BASE = "https://aqaralmuhaysini.com"
-START = f"{BASE}/nearproperties?latitude=24&longitude=46"
+STARTS = [f"https://aqaralmuhaysini.com/propertielist?regionId={i}" for i in range(1, 21)]
 NEXT_BTN = "text=/^(التالي|Next|›|»|>)$/"
 
 async def main():
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         page = await browser.new_page()
-        await page.goto(START, wait_until="networkidle")
 
-        links, page_no = set(), 1
-        while True:
-            await page.mouse.wheel(0, 50000)
-            await page.wait_for_timeout(1500)
-            found = await page.eval_on_selector_all(
-                "a[href*='propertydetails']", "els => els.map(e => e.href)")
-            before = len(links)
-            links.update(found)
-            print(f"صفحة {page_no}: {len(links)} إعلان")
+        links = set()
+        for start in STARTS:
+            await page.goto(start, wait_until="networkidle")
+            page_no = 1
+            while True:
+                await page.mouse.wheel(0, 50000)
+                await page.wait_for_timeout(1500)
+                found = await page.eval_on_selector_all(
+                    "a[href*='propertydetails']", "els => els.map(e => e.href)")
+                before = len(links)
+                links.update(found)
+                print(f"{start} | صفحة {page_no}: {len(links)} إعلان")
 
-            nxt = page.locator(NEXT_BTN).last
-            if await nxt.count() and await nxt.is_visible() and await nxt.is_enabled():
-                await nxt.click()
-                await page.wait_for_load_state("networkidle")
-                page_no += 1
-            elif len(links) == before:
-                break
+                nxt = page.locator(NEXT_BTN).last
+                if await nxt.count() and await nxt.is_visible() and await nxt.is_enabled():
+                    await nxt.click()
+                    await page.wait_for_load_state("networkidle")
+                    page_no += 1
+                elif len(links) == before:
+                    break
 
         results = []
         for i, url in enumerate(sorted(links), 1):
@@ -43,7 +44,7 @@ async def main():
 
         await browser.close()
 
-        texts = [r["text"] for r in results]
+    texts = [r["text"] for r in results]
     pre = len(os.path.commonprefix(texts))
     suf = len(os.path.commonprefix([t[::-1] for t in texts]))
     for r in results:
